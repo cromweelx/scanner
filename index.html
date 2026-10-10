@@ -40,12 +40,17 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--ac)}
 a.btn{flex:1;text-align:center;text-decoration:none;color:var(--tx);background:var(--line);border-radius:10px;padding:9px;font-size:13px;font-weight:600}
 .empty{color:var(--mut);text-align:center;padding:30px 10px}
 .foot{color:var(--mut);font-size:12px;margin-top:18px;text-align:center}
+.tabs{display:flex;gap:6px;background:var(--card);padding:4px;border-radius:14px;margin-bottom:14px}
+.tab{flex:1;background:transparent;color:var(--mut);padding:10px;font-weight:600}
+.tab.on{background:var(--ac);color:#06121f}
 </style>
 </head>
 <body>
 <h1>Token Szkenner</h1>
 <p class="sub">Solana · új tokenek · élő szűrés</p>
 
+<div class="tabs"><button class="tab on" data-t="p1">Új tokenek</button><button class="tab" data-t="p2">5 perc trend</button></div>
+<section id="p1">
 <button id="go">Indítás</button>
 <div id="status">Készen áll.</div>
 
@@ -59,6 +64,18 @@ a.btn{flex:1;text-align:center;text-decoration:none;color:var(--tx);background:v
 </details>
 
 <div id="out"><div class="empty">Nyomd meg az Indítást. A szűrőn átjutó tokenek itt jelennek meg.</div></div>
+</section>
+<section id="p2" hidden>
+<button id="go2">Trend-keresés indítása</button>
+<div id="status2">Készen áll. Friss tokeneket figyel, 20 mp-enként ellenőrzi az 5 perces mozgást.</div>
+<details id="d2">
+  <summary>Trend szűrők</summary>
+  <div id="fields2"></div>
+  <label>Holder/rug ellenőrzés (RugCheck)<input type="checkbox" id="useRug2"></label>
+  <label style="border-top:0"><span></span><button class="sm" id="reset2">Alaphelyzet</button></label>
+</details>
+<div id="out2"><div class="empty">Itt jelennek meg azok a tokenek, amelyeknél most gyorsul a forgalom és az ár.</div></div>
+</section>
 <p class="foot">Csak szűrő, nem pénzügyi tanács. A találatokat ellenőrizd kézzel is.</p>
 
 <script>
@@ -156,12 +173,15 @@ function card(m,p,r){
   <div class="chips">${r.h.map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</div>
   <div class="row"><a class="btn" target="_blank" rel="noopener" href="https://dexscreener.com/solana/${encodeURIComponent(p.pairAddress)}">DexScreener</a>
   <a class="btn" href="#" data-ca="${esc(m)}">CA másolása</a></div>`;
+  wireCopy(el,m);
+  return el;
+}
+function wireCopy(el,m){
   el.querySelector("[data-ca]").onclick=async e=>{
     e.preventDefault();const t=e.target;
     try{await navigator.clipboard.writeText(m)}catch(x){const i=document.createElement("input");i.value=m;document.body.appendChild(i);i.select();document.execCommand("copy");i.remove()}
     t.textContent="Másolva";setTimeout(()=>t.textContent="CA másolása",1500);
   };
-  return el;
 }
 
 let timer=null,running=false,done=new Set(),found=0,checked=0;
@@ -193,6 +213,96 @@ $("go").onclick=()=>{
   $("go").textContent=running?"Leállítás":"Indítás";
   $("go").classList.toggle("stop",running);
   if(running){rugFail=false;cycle()}else{clearTimeout(timer);$("status").textContent="Leállítva."}
+};
+
+/* ===== Tabváltás ===== */
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===b));
+  ["p1","p2"].forEach(id=>$(id).hidden=id!==b.dataset.t);
+});
+
+/* ===== 5 perces trend mód (külön beállítások és lista) ===== */
+const DEF2={minLiq:15000,minVol5:5000,minBuys5:30,minBuy5:55,minPc5:3,maxPc5:40,accel:2,maxAge:24,maxTop10:40,useRug:true};
+const F2=[["minLiq","Min. likviditás ($)"],["minVol5","Min. 5 perces volumen ($)"],["minBuys5","Min. 5 perces vételszám"],
+ ["minBuy5","Min. vétel-arány 5p (%)"],["minPc5","Min. 5p árváltozás (%)"],["maxPc5","Max. 5p árváltozás (%)"],
+ ["accel","Min. gyorsulás (×, 5p vs. órás átlag)"],["maxAge","Max. kor (óra)"],["maxTop10","Max. top10 holder (%)"]];
+let c2={...DEF2};
+try{c2={...DEF2,...JSON.parse(localStorage.getItem("cfg2")||"{}")}}catch(e){}
+function draw2(){
+  $("fields2").innerHTML=F2.map(([k,l])=>`<label>${l}<input type="number" inputmode="decimal" data-k2="${k}" value="${c2[k]}"></label>`).join("");
+  $("useRug2").checked=c2.useRug;
+}
+function read2(){
+  document.querySelectorAll("[data-k2]").forEach(i=>{const v=parseFloat(i.value);if(!isNaN(v))c2[i.dataset.k2]=v});
+  c2.useRug=$("useRug2").checked;
+  try{localStorage.setItem("cfg2",JSON.stringify(c2))}catch(e){}
+}
+$("d2").addEventListener("change",read2);
+$("reset2").onclick=()=>{c2={...DEF2};try{localStorage.removeItem("cfg2")}catch(e){}draw2()};
+draw2();
+
+function trendOk(p){
+  const liq=(p.liquidity||{}).usd||0,v=p.volume||{},v5=v.m5||0,v1=v.h1||0;
+  const t=(p.txns||{}).m5||{},b=t.buys||0,s=t.sells||0,ratio=b+s?b/(b+s):0;
+  const pc=(p.priceChange||{}).m5;
+  const age=p.pairCreatedAt?(Date.now()-p.pairCreatedAt)/3600e3:null;
+  const acc=v1>0?v5/(v1/12):(v5>0?99:0);
+  if(liq<c2.minLiq||v5<c2.minVol5||b<c2.minBuys5||ratio*100<c2.minBuy5)return null;
+  if(pc==null||pc<c2.minPc5||pc>c2.maxPc5||acc<c2.accel)return null;
+  if(age!==null&&age>c2.maxAge)return null;
+  return{liq,v5,b,s,pc,acc,age};
+}
+function card2(m,p,x){
+  const b=p.baseToken||{};
+  const age=x.age==null?"?":x.age<2?Math.round(x.age*60)+" perc":x.age.toFixed(1)+" óra";
+  const el=document.createElement("div");el.className="card";
+  el.innerHTML=`<div class="top"><span class="sym">$${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></div>
+  <div class="grid"><div><span>5p ár</span> +${x.pc.toFixed(1)}%</div><div><span>Gyorsulás</span> ${x.acc.toFixed(1)}×</div>
+  <div><span>5p vol</span> $${fmt(x.v5)}</div><div><span>5p V/E</span> ${x.b}/${x.s}</div>
+  <div><span>Likvid</span> $${fmt(x.liq)}</div><div><span>MC</span> $${fmt(p.marketCap||p.fdv)}</div>
+  <div><span>Kor</span> ${age}</div><div><span>Top10</span> ${x.top10!=null?x.top10.toFixed(1)+"%":"n/a"}</div>
+  <div><span>Jelzés</span> ${new Date().toLocaleTimeString("hu-HU")}</div></div>
+  <div class="row"><a class="btn" target="_blank" rel="noopener" href="https://dexscreener.com/solana/${encodeURIComponent(p.pairAddress)}">DexScreener</a>
+  <a class="btn" href="#" data-ca="${esc(m)}">CA másolása</a></div>`;
+  wireCopy(el,m);
+  return el;
+}
+const watch=new Map(),rcCache=new Map();
+let run2=false,t2=null,found2=0;
+const WATCH_MS=3*3600e3,COOLDOWN=20*60e3,POLL2=20000,RC_TTL=5*60e3;
+async function cycle2(){
+  if(!run2)return;
+  $("status2").textContent="Keresés…";
+  const now=Date.now(),c=await candidates();
+  for(const m in c)if(!watch.has(m))watch.set(m,{t:now,last:0});
+  for(const [m,w] of watch)if(now-w.t>WATCH_MS)watch.delete(m);
+  const mints=[...watch.keys()],pairs=mints.length?await pairsFor(mints):{};
+  for(const m of mints){
+    const p=pairs[m],w=watch.get(m);
+    if(!p||now-w.last<COOLDOWN)continue;
+    const x=trendOk(p);if(!x)continue;
+    let rc=null;
+    if(c2.useRug){
+      const hit=rcCache.get(m);
+      if(hit&&now-hit.t<RC_TTL)rc=hit.rc;else{rc=await rug(m);rcCache.set(m,{t:now,rc})}
+      if(rc&&(rc.danger.length||rc.top10>c2.maxTop10))continue;
+    }
+    x.top10=rc?rc.top10:null;
+    w.last=now;found2++;
+    if(found2===1)$("out2").innerHTML="";
+    $("out2").prepend(card2(m,p,x));
+    if(navigator.vibrate)navigator.vibrate([120,60,120]);
+  }
+  $("status2").textContent=`Fut · frissítve ${new Date().toLocaleTimeString("hu-HU")} · figyelőlista: ${watch.size} · jelzés: ${found2}`+
+    (rugFail?" · RugCheck nem elérhető, holder-szűrés kimarad":"");
+  if(run2)t2=setTimeout(cycle2,POLL2);
+}
+$("go2").onclick=()=>{
+  read2();
+  run2=!run2;
+  $("go2").textContent=run2?"Leállítás":"Trend-keresés indítása";
+  $("go2").classList.toggle("stop",run2);
+  if(run2){rugFail=false;cycle2()}else{clearTimeout(t2);$("status2").textContent="Leállítva."}
 };
 </script>
 </body>

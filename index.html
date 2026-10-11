@@ -43,6 +43,7 @@ a.btn{flex:1;text-align:center;text-decoration:none;color:var(--tx);background:v
 .tabs{display:flex;gap:6px;background:var(--card);padding:4px;border-radius:14px;margin-bottom:14px}
 .tab{flex:1;background:transparent;color:var(--mut);padding:10px;font-weight:600}
 .tab.on{background:var(--ac);color:#06121f}
+b.age{font-weight:400}
 </style>
 </head>
 <body>
@@ -164,24 +165,35 @@ async function evaluate(m,p,desc){
 function card(m,p,r){
   const b=p.baseToken||{},rc=r.rc;
   const age=r.age==null?"?":r.age<120?Math.round(r.age)+" perc":(r.age/60).toFixed(1)+" óra";
-  const el=document.createElement("div");el.className="card";
+  const el=document.createElement("div");el.className="card";el.dataset.created=p.pairCreatedAt||0;el.dataset.mint=m;
   el.innerHTML=`<div class="top"><span class="sym">$${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></div>
-  <div class="grid"><div><span>Kor</span> ${age}</div><div><span>MC</span> $${fmt(p.marketCap||p.fdv)}</div>
+  <div class="grid"><div><span>Kor</span> <b class="age">${age}</b></div><div><span>MC</span> $${fmt(p.marketCap||p.fdv)}</div>
   <div><span>Likvid</span> $${fmt(r.liq)}</div><div><span>Vol 24h</span> $${fmt(r.vol)}</div>
   <div><span>Holder</span> ${rc&&rc.holders!=null?rc.holders:"n/a"}</div><div><span>Top10</span> ${rc?rc.top10.toFixed(1)+"%":"n/a"}</div>
   <div><span>Vétel 1h</span> ${Math.round(r.ratio*100)}%</div></div>
   <div class="chips">${r.h.map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</div>
   <div class="row"><a class="btn" target="_blank" rel="noopener" href="https://dexscreener.com/solana/${encodeURIComponent(p.pairAddress)}">DexScreener</a>
-  <a class="btn" href="#" data-ca="${esc(m)}">CA másolása</a></div>`;
+  <a class="btn" href="#" data-ca="${esc(m)}">CA másolása</a>
+  <a class="btn" target="_blank" rel="noopener" href="https://fomo.family" data-fomo="1">Fomo</a></div>`;
   wireCopy(el,m);
   return el;
 }
+function copyText(m){
+  try{navigator.clipboard.writeText(m).catch(()=>{})}catch(x){}
+  try{const i=document.createElement("input");i.value=m;document.body.appendChild(i);i.select();i.setSelectionRange(0,999);document.execCommand("copy");i.remove()}catch(x){}
+}
 function wireCopy(el,m){
-  el.querySelector("[data-ca]").onclick=async e=>{
-    e.preventDefault();const t=e.target;
-    try{await navigator.clipboard.writeText(m)}catch(x){const i=document.createElement("input");i.value=m;document.body.appendChild(i);i.select();document.execCommand("copy");i.remove()}
+  el.querySelector("[data-ca]").onclick=e=>{
+    e.preventDefault();copyText(m);const t=e.target;
     t.textContent="Másolva";setTimeout(()=>t.textContent="CA másolása",1500);
   };
+  el.querySelector("[data-fomo]").onclick=()=>copyText(m);
+}
+function ageTxt(c){if(!c)return"?";const m=(Date.now()-c)/60000;return m<120?Math.round(m)+" perc":(m/60).toFixed(1)+" óra"}
+function sortOut(box){
+  const k=[...box.querySelectorAll(".card")];
+  k.forEach(c=>{const a=c.querySelector(".age");if(a)a.textContent=ageTxt(+c.dataset.created)});
+  k.sort((a,b)=>b.dataset.created-a.dataset.created).forEach(c=>box.appendChild(c));
 }
 
 let timer=null,running=false,done=new Set(),found=0,checked=0;
@@ -198,13 +210,14 @@ async function cycle(){
     if(st==="pass"){
       found++;
       if(found===1)$("out").innerHTML="";
-      $("out").prepend(card(m,p,r));
+      $("out").appendChild(card(m,p,r));sortOut($("out"));
       if(navigator.vibrate)navigator.vibrate(120);
     }
   }
   const t=new Date().toLocaleTimeString("hu-HU");
   $("status").textContent=`Fut · frissítve ${t} · ellenőrzött: ${checked} · találat: ${found}`+
     (rugFail?" · RugCheck nem elérhető, holder-szűrés kimarad":"");
+  sortOut($("out"));
   timer=setTimeout(cycle,POLL);
 }
 $("go").onclick=()=>{
@@ -255,15 +268,16 @@ function trendOk(p){
 function card2(m,p,x){
   const b=p.baseToken||{};
   const age=x.age==null?"?":x.age<2?Math.round(x.age*60)+" perc":x.age.toFixed(1)+" óra";
-  const el=document.createElement("div");el.className="card";
+  const el=document.createElement("div");el.className="card";el.dataset.created=p.pairCreatedAt||0;el.dataset.mint=m;
   el.innerHTML=`<div class="top"><span class="sym">$${esc(b.symbol)}</span><span class="nm">${esc(b.name)}</span></div>
   <div class="grid"><div><span>5p ár</span> +${x.pc.toFixed(1)}%</div><div><span>Gyorsulás</span> ${x.acc.toFixed(1)}×</div>
   <div><span>5p vol</span> $${fmt(x.v5)}</div><div><span>5p V/E</span> ${x.b}/${x.s}</div>
   <div><span>Likvid</span> $${fmt(x.liq)}</div><div><span>MC</span> $${fmt(p.marketCap||p.fdv)}</div>
-  <div><span>Kor</span> ${age}</div><div><span>Top10</span> ${x.top10!=null?x.top10.toFixed(1)+"%":"n/a"}</div>
+  <div><span>Kor</span> <b class="age">${age}</b></div><div><span>Top10</span> ${x.top10!=null?x.top10.toFixed(1)+"%":"n/a"}</div>
   <div><span>Jelzés</span> ${new Date().toLocaleTimeString("hu-HU")}</div></div>
   <div class="row"><a class="btn" target="_blank" rel="noopener" href="https://dexscreener.com/solana/${encodeURIComponent(p.pairAddress)}">DexScreener</a>
-  <a class="btn" href="#" data-ca="${esc(m)}">CA másolása</a></div>`;
+  <a class="btn" href="#" data-ca="${esc(m)}">CA másolása</a>
+  <a class="btn" target="_blank" rel="noopener" href="https://fomo.family" data-fomo="1">Fomo</a></div>`;
   wireCopy(el,m);
   return el;
 }
@@ -290,11 +304,13 @@ async function cycle2(){
     x.top10=rc?rc.top10:null;
     w.last=now;found2++;
     if(found2===1)$("out2").innerHTML="";
-    $("out2").prepend(card2(m,p,x));
+    [...$("out2").children].forEach(c=>{if(c.dataset.mint===m)c.remove()});
+    $("out2").appendChild(card2(m,p,x));sortOut($("out2"));
     if(navigator.vibrate)navigator.vibrate([120,60,120]);
   }
   $("status2").textContent=`Fut · frissítve ${new Date().toLocaleTimeString("hu-HU")} · figyelőlista: ${watch.size} · jelzés: ${found2}`+
     (rugFail?" · RugCheck nem elérhető, holder-szűrés kimarad":"");
+  sortOut($("out2"));
   if(run2)t2=setTimeout(cycle2,POLL2);
 }
 $("go2").onclick=()=>{

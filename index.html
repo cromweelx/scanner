@@ -37,7 +37,15 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--ac)}
 .chips{margin:4px 0 10px}
 .chip{display:inline-block;background:var(--line);border-radius:20px;padding:2px 10px;font-size:12px;margin:0 6px 4px 0}
 .row{display:flex;flex-wrap:wrap;gap:8px}
-a.btn{flex:1 1 calc(50% - 4px);text-align:center;text-decoration:none;color:var(--tx);background:var(--line);border-radius:10px;padding:9px;font-size:13px;font-weight:600}
+a.btn{flex:1 1 90px;text-align:center;text-decoration:none;color:var(--tx);background:var(--line);border-radius:10px;padding:9px;font-size:13px;font-weight:600}
+a.btn.pump{flex:1 1 100%;position:relative;overflow:hidden;color:#04140b;font-size:15px;font-weight:800;padding:13px;
+ background:linear-gradient(135deg,#46ffa3,#00cf78);animation:pulse 1.8s infinite}
+a.btn.pump::after{content:"";position:absolute;top:0;left:0;width:40%;height:100%;transform:translateX(-150%) skewX(-20deg);
+ background:linear-gradient(100deg,transparent,rgba(255,255,255,.7),transparent);animation:shine 2.6s infinite}
+a.btn.pump:active{transform:scale(.97)}
+@keyframes shine{0%{transform:translateX(-150%) skewX(-20deg)}55%,100%{transform:translateX(350%) skewX(-20deg)}}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(70,255,163,.55)}70%{box-shadow:0 0 0 10px rgba(70,255,163,0)}100%{box-shadow:0 0 0 0 rgba(70,255,163,0)}}
+@media(prefers-reduced-motion:reduce){a.btn.pump,a.btn.pump::after{animation:none}}
 .empty{color:var(--mut);text-align:center;padding:30px 10px}
 .foot{color:var(--mut);font-size:12px;margin-top:18px;text-align:center}
 .tabs{display:flex;gap:6px;background:var(--card);padding:4px;border-radius:14px;margin-bottom:14px}
@@ -182,10 +190,10 @@ function copyText(m){
 }
 function btns(m,p){
   const e=encodeURIComponent;
-  return `<div class="row"><a class="btn" target="_blank" rel="noopener" href="https://dexscreener.com/solana/${e(p.pairAddress)}">DexScreener</a>
-  <a class="btn" target="_blank" rel="noopener" href="https://pump.fun/coin/${e(m)}" data-copy="1">Pump.fun</a>
+  return `<div class="row"><a class="btn pump" target="_blank" rel="noopener" href="https://pump.fun/coin/${e(m)}" data-copy="1">💊 Pump.fun megnyitása</a>
+  <a class="btn" target="_blank" rel="noopener" href="https://dexscreener.com/solana/${e(p.pairAddress)}">DexScreener</a>
   <a class="btn" target="_blank" rel="noopener" href="https://v2.bubblemaps.io/map?address=${e(m)}&amp;chain=solana">Bubblemaps</a>
-  <a class="btn" target="_blank" rel="noopener" href="https://fomo.family" data-copy="1">Fomo</a></div>`;
+  <a class="btn" target="_blank" rel="noopener" href="https://fomo.family/tokens/solana/${e(m)}" data-copy="1">Fomo</a></div>`;
 }
 function wireCopy(el,m){
   el.querySelectorAll("[data-copy]").forEach(a=>a.onclick=()=>copyText(m));

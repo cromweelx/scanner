@@ -36,8 +36,8 @@ input[type=checkbox]{width:22px;height:22px;accent-color:var(--ac)}
 .grid span{color:var(--mut)}
 .chips{margin:4px 0 10px}
 .chip{display:inline-block;background:var(--line);border-radius:20px;padding:2px 10px;font-size:12px;margin:0 6px 4px 0}
-.row{display:flex;gap:8px}
-a.btn{flex:1;text-align:center;text-decoration:none;color:var(--tx);background:var(--line);border-radius:10px;padding:9px;font-size:13px;font-weight:600}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+a.btn{flex:1 1 40%;text-align:center;text-decoration:none;color:var(--tx);background:var(--line);border-radius:10px;padding:9px;font-size:13px;font-weight:600}
 .empty{color:var(--mut);text-align:center;padding:30px 10px}
 .foot{color:var(--mut);font-size:12px;margin-top:18px;text-align:center}
 .tabs{display:flex;gap:6px;background:var(--card);padding:4px;border-radius:14px;margin-bottom:14px}
@@ -81,10 +81,10 @@ b.age{font-weight:400}
 
 <script>
 const DEX="https://api.dexscreener.com", RUG="https://api.rugcheck.xyz/v1", POLL=10000;
-const DEF={minLiq:15000,minVol:30000,minAge:10,maxAge:24,minBuy:45,maxTop10:40,minHolders:150,
+const DEF={minLiq:15000,minVol:30000,minAge:10,maxAge:24,minBuy:45,maxTop10:40,maxIns:30,minHolders:150,
  narr:"ai, agent, trump, dog, cat, frog, pepe, meme, gaming, defi, depin, rwa, anime",reqNarr:false,useRug:true};
 const FIELDS=[["minLiq","Min. likviditás ($)"],["minVol","Min. 24h volumen ($)"],["minAge","Min. kor (perc)"],
- ["maxAge","Max. kor (óra)"],["minBuy","Min. vétel-arány 1h (%)"],["maxTop10","Max. top10 holder (%)"],["minHolders","Min. holderszám"]];
+ ["maxAge","Max. kor (óra)"],["minBuy","Min. vétel-arány 1h (%)"],["maxTop10","Max. top10 holder (%)"],["minHolders","Min. holderszám"],["maxIns","Max. insider holder (%), 0 = ki"]];
 let cfg={...DEF};
 try{cfg={...DEF,...JSON.parse(localStorage.getItem("cfg")||"{}")}}catch(e){}
 
@@ -131,11 +131,15 @@ async function rug(m){
   try{
     const d=await jget(`${RUG}/tokens/${m}/report`);
     const top10=(d.topHolders||[]).slice(0,10).reduce((s,h)=>s+(h.pct||0),0);
-    return{holders:d.totalHolders,top10,danger:(d.risks||[]).filter(r=>r.level==="danger").map(r=>r.name)};
+    const ps=(d.topHolders||[]).map(h=>h.pct||0).filter(x=>x>0).sort((a,b)=>a-b),n=ps.length,medPct=n?(n%2?ps[(n-1)/2]:(ps[n/2-1]+ps[n/2])/2):null;
+    const iv=(d.topHolders||[]).filter(h=>h.insider),insPct=iv.reduce((a,h)=>a+(h.pct||0),0),nets=Array.isArray(d.insiderNetworks)?d.insiderNetworks:[],netMax=nets.reduce((m,x)=>Math.max(m,x.size||0),0);
+    return{holders:d.totalHolders,top10,medPct,n,insPct,insN:Math.max(iv.length,d.graphInsidersDetected||0),netMax,danger:(d.risks||[]).filter(r=>r.level==="danger").map(r=>r.name)};
   }catch(e){rugFail=true;return null}
 }
 const rcP=new Map();
 function rugC(m){const h=rcP.get(m);if(h&&Date.now()-h.t<300000)return h.p;const p=rug(m);rcP.set(m,{t:Date.now(),p});return p}
+const medUsd=(rc,p)=>{const mc=p.marketCap||p.fdv||0;if(!rc||rc.medPct==null||!mc)return"n/a";const v=rc.medPct/100*mc;return"$"+(v<10?v.toFixed(1):fmt(v))+" (top"+rc.n+")"};
+const insTxt=rc=>!rc?"n/a":rc.insPct.toFixed(1)+"% · "+rc.insN+" tárca"+(rc.netMax?" · klaszter "+rc.netMax:"");
 function hits(p,desc){
   const b=p.baseToken||{},t=`${b.name||""} ${b.symbol||""} ${desc}`.toLowerCase();
   return cfg.narr.split(",").map(s=>s.trim().toLowerCase()).filter(Boolean)
@@ -155,7 +159,7 @@ async function evaluate(m,p,desc){
   if(cfg.useRug){
     rc=await rugC(m);
     if(rc){
-      if(rc.danger.length||rc.top10>cfg.maxTop10)return["fail"];
+      if(rc.danger.length||rc.top10>cfg.maxTop10||(cfg.maxIns>0&&rc.insPct>cfg.maxIns))return["fail"];
       if(rc.holders!=null&&rc.holders<cfg.minHolders)return["fail"];
     }
   }
@@ -169,10 +173,11 @@ function card(m,p,r){
   <div class="grid"><div><span>Kor</span> <b class="age">${age}</b></div><div><span>MC</span> $${fmt(p.marketCap||p.fdv)}</div>
   <div><span>Likvid</span> $${fmt(r.liq)}</div><div><span>Vol 24h</span> $${fmt(r.vol)}</div>
   <div><span>Holder</span> ${rc&&rc.holders!=null?rc.holders:"n/a"}</div><div><span>Top10</span> ${rc?rc.top10.toFixed(1)+"%":"n/a"}</div>
-  <div><span>Vétel 1h</span> ${Math.round(r.ratio*100)}%</div></div>
+  <div><span>Vétel 1h</span> ${Math.round(r.ratio*100)}%</div><div><span>Medián holder</span> ${medUsd(rc,p)}</div><div><span>Insider</span> ${insTxt(rc)}</div></div>
   <div class="chips">${r.h.map(x=>`<span class="chip">${esc(x)}</span>`).join("")}</div>
   <div class="row"><a class="btn" target="_blank" rel="noopener" href="https://dexscreener.com/solana/${encodeURIComponent(p.pairAddress)}">DexScreener</a>
   <a class="btn" href="#" data-ca="${esc(m)}">CA másolása</a>
+  <a class="btn" target="_blank" rel="noopener" href="https://app.bubblemaps.io/sol/token/${encodeURIComponent(m)}">Bubblemaps</a>
   <a class="btn" target="_blank" rel="noopener" href="https://fomo.family" data-fomo="1">Fomo</a></div>`;
   wireCopy(el,m);
   return el;
@@ -255,10 +260,10 @@ document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{
 });
 
 /* ===== 5 perces trend mód (külön beállítások és lista) ===== */
-const DEF2={minLiq:15000,minVol5:5000,minBuys5:30,minBuy5:55,minPc5:3,maxPc5:40,accel:2,maxAge:24,maxTop10:40,useRug:true};
+const DEF2={minLiq:15000,minVol5:5000,minBuys5:30,minBuy5:55,minPc5:3,maxPc5:40,accel:2,maxAge:24,maxTop10:40,maxIns:30,useRug:true};
 const F2=[["minLiq","Min. likviditás ($)"],["minVol5","Min. 5 perces volumen ($)"],["minBuys5","Min. 5 perces vételszám"],
  ["minBuy5","Min. vétel-arány 5p (%)"],["minPc5","Min. 5p árváltozás (%)"],["maxPc5","Max. 5p árváltozás (%)"],
- ["accel","Min. gyorsulás (×, 5p vs. órás átlag)"],["maxAge","Max. kor (óra)"],["maxTop10","Max. top10 holder (%)"]];
+ ["accel","Min. gyorsulás (×, 5p vs. órás átlag)"],["maxAge","Max. kor (óra)"],["maxTop10","Max. top10 holder (%)"],["maxIns","Max. insider holder (%), 0 = ki"]];
 let c2={...DEF2};
 try{c2={...DEF2,...JSON.parse(localStorage.getItem("cfg2")||"{}")}}catch(e){}
 function draw2(){
@@ -293,10 +298,11 @@ function card2(m,p,x){
   <div class="grid"><div><span>5p ár</span> +${x.pc.toFixed(1)}%</div><div><span>Gyorsulás</span> ${x.acc.toFixed(1)}×</div>
   <div><span>5p vol</span> $${fmt(x.v5)}</div><div><span>5p V/E</span> ${x.b}/${x.s}</div>
   <div><span>Likvid</span> $${fmt(x.liq)}</div><div><span>MC</span> $${fmt(p.marketCap||p.fdv)}</div>
-  <div><span>Kor</span> <b class="age">${age}</b></div><div><span>Top10</span> <b class="age t10">${c2.useRug?"…":"n/a"}</b></div>
+  <div><span>Kor</span> <b class="age">${age}</b></div><div><span>Top10</span> <b class="age t10">${c2.useRug?"…":"n/a"}</b></div><div><span>Medián holder</span> <b class="age med">${c2.useRug?"…":"n/a"}</b></div><div><span>Insider</span> <b class="age ins">${c2.useRug?"…":"n/a"}</b></div>
   <div><span>Jelzés</span> ${new Date().toLocaleTimeString("hu-HU")}</div></div>
   <div class="row"><a class="btn" target="_blank" rel="noopener" href="https://dexscreener.com/solana/${encodeURIComponent(p.pairAddress)}">DexScreener</a>
   <a class="btn" href="#" data-ca="${esc(m)}">CA másolása</a>
+  <a class="btn" target="_blank" rel="noopener" href="https://app.bubblemaps.io/sol/token/${encodeURIComponent(m)}">Bubblemaps</a>
   <a class="btn" target="_blank" rel="noopener" href="https://fomo.family" data-fomo="1">Fomo</a></div>`;
   wireCopy(el,m);
   return el;
@@ -323,11 +329,14 @@ async function cycle2(){
       [...$("out2").children].forEach(k=>{if(k.dataset.mint===m)k.remove()});
       const el=card2(m,p,x);$("out2").appendChild(el);sortOut($("out2"));alertNow();
       if(c2.useRug)rugC(m).then(rc=>{
-        if(!rc)return;
+        if(!rc){["t10","med","ins"].forEach(k=>{const e=el.querySelector("."+k);if(e)e.textContent="n/a"});return}
         const t=el.querySelector(".t10");if(t)t.textContent=rc.top10.toFixed(1)+"%";
-        if(rc.danger.length||rc.top10>c2.maxTop10){el.style.borderLeftColor="var(--warn)";
+        const md=el.querySelector(".med");if(md)md.textContent=medUsd(rc,p);
+        const ie=el.querySelector(".ins");if(ie)ie.textContent=insTxt(rc);
+        const bad=rc.danger.slice();if(rc.top10>c2.maxTop10)bad.push("top10 magas");if(c2.maxIns>0&&rc.insPct>c2.maxIns)bad.push("insider "+rc.insPct.toFixed(0)+"%");
+        if(bad.length){el.style.borderLeftColor="var(--warn)";
           const ch=document.createElement("div");ch.className="chips";
-          ch.innerHTML=`<span class="chip">⚠ ${esc(rc.danger.join(", ")||"top10 magas")}</span>`;
+          ch.innerHTML=`<span class="chip">⚠ ${esc(bad.join(", "))}</span>`;
           el.insertBefore(ch,el.querySelector(".row"))}
       });
     }
